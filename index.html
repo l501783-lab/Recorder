@@ -91,6 +91,11 @@ summary{cursor:pointer;color:var(--ink-soft);font-size:14px}
 .item-name{font-weight:500;word-break:break-word}
 .item-meta{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
 .item-prev{font-size:13.5px;color:var(--ink-soft);margin:5px 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+h3{font-family:"Noto Serif TC",serif;font-weight:600;font-size:16px;margin:22px 0 8px}
+.notes{margin:6px 0 0;padding-left:20px;font-size:14px;color:var(--ink-soft);line-height:1.8}
+.notes li{margin-bottom:5px}
+#revised{min-height:200px}
+.working{opacity:.6}
 footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
@@ -131,8 +136,8 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
       <button class="btn" id="whisperBtn" disabled>用 Whisper 重新轉寫</button>
     </div>
     <details>
-      <summary>Whisper 設定（選用，想要更準的逐字稿再打開）</summary>
-      <p class="note">金鑰只存在這台裝置，不會上傳到網站；錄音檔會直接從你的瀏覽器送到 OpenAI。Whisper 轉寫回來的時間戳記比即時辨識更準。</p>
+      <summary>OpenAI 金鑰設定（選用，Whisper 轉寫和 AI 潤稿都會用到）</summary>
+      <p class="note">金鑰只存在這台裝置，不會上傳到網站；錄音檔和逐字稿會直接從你的瀏覽器送到 OpenAI。Whisper 轉寫回來的時間戳記比即時辨識更準。</p>
       <div class="row" style="margin-top:8px">
         <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:200px">
         <button class="btn" id="saveKey">記住金鑰</button>
@@ -150,6 +155,49 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
       <button class="btn primary" id="dlText">下載逐字稿 .txt</button>
       <button class="btn" id="copyText">複製全文</button>
       <button class="btn" id="clearText">清空這段</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>換個角度潤稿</h2>
+    <p class="hint">用督導或教練的眼光重看一次用字遣詞。原稿會留著不動，改好的版本另外顯示，你決定要不要採用。</p>
+    <div class="row">
+      <label for="role" class="note">角度</label>
+      <select id="role" style="flex:1;min-width:190px">
+        <option value="psy">心理師督導</option>
+        <option value="sw">社工師督導</option>
+        <option value="speech">演講教練</option>
+      </select>
+    </div>
+    <p class="note" id="roleDesc" style="margin:8px 0 0"></p>
+    <div class="row" style="margin-top:12px">
+      <select id="depth">
+        <option value="light">輕度校正，只動明顯不妥的字</option>
+        <option value="full" selected>專業潤飾，可以重寫句子</option>
+      </select>
+      <select id="model">
+        <option value="gpt-4o-mini" selected>gpt-4o-mini（快、便宜）</option>
+        <option value="gpt-4o">gpt-4o（更細緻）</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="reviseBtn">開始潤稿</button>
+      <span class="note" id="reviseState"></span>
+    </div>
+
+    <div id="reviseOut" hidden>
+      <h3 id="reviseTitle">改善後的逐字稿</h3>
+      <textarea id="revised"></textarea>
+      <div class="row">
+        <button class="btn primary" id="useRevised">採用，取代原稿</button>
+        <button class="btn" id="dlRevised">下載 .txt</button>
+        <button class="btn" id="speakRevised">唸這一版</button>
+        <button class="btn" id="dropRevised">收起</button>
+      </div>
+      <div id="notesWrap" hidden>
+        <h3>督導提醒</h3>
+        <ul class="notes" id="notes"></ul>
+      </div>
     </div>
   </section>
 
@@ -668,6 +716,155 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     whisperBtn.disabled = false;
   });
 
+  /* ---------- 換個角度潤稿 ---------- */
+  var roleSel=$("role"), roleDesc=$("roleDesc"), depthSel=$("depth"), modelSel=$("model"),
+      reviseBtn=$("reviseBtn"), reviseState=$("reviseState"), reviseOut=$("reviseOut"),
+      revisedTa=$("revised"), notesWrap=$("notesWrap"), notesEl=$("notes"), reviseTitle=$("reviseTitle");
+
+  var ROLES = {
+    psy: {
+      label: "心理師督導",
+      desc: "檢查同理、不評價、避免標籤化與診斷式說法，看提問是否開放、是否守住個案的主體性。",
+      sys: "你是資深諮商心理師督導，正在協助受督者修整會談逐字稿的用字遣詞。你的專業判準：語句是否具同理與尊重；是否避免評價、標籤化、病理化或診斷性語言；是否避免過早給建議、說教或保證；提問是否開放而非引導或封閉；是否守住個案的主體性與自我決定；是否符合台灣諮商倫理的保密與界線用語。"
+    },
+    sw: {
+      label: "社工師督導",
+      desc: "看是否站在優勢觀點、尊重案主自決，用字是否去污名、紀錄是否精準可用。",
+      sys: "你是資深社工師督導，正在協助受督者修整服務紀錄或會談逐字稿的用字遣詞。你的專業判準：是否採優勢觀點而非缺陷導向；是否尊重案主自決、避免替案主決定；用字是否去污名、避免價值判斷與道德評價；對家庭、經濟、身心狀況的描述是否具體客觀而非推測；風險與需求的陳述是否精確、足以作為專業紀錄；是否適當連結資源而非承諾無法履行的事。"
+    },
+    speech: {
+      label: "演講教練",
+      desc: "刪贅詞、把句子講得更清楚有力，整理成可以直接開口講的稿。",
+      sys: "你是專業口語表達與演講教練，正在協助講者把逐字稿整理成能直接開口講的講稿。你的專業判準：刪掉口語贅詞與重複（嗯、那個、然後、就是說）；長句拆短、主詞動詞清楚；用具體的說法取代空泛形容；段落有層次、開頭抓得住人、結尾收得住；保留講者原本的語氣和個人風格，不要改成書面腔。"
+    }
+  };
+
+  function syncRoleDesc(){ roleDesc.textContent = ROLES[roleSel.value].desc; }
+  roleSel.addEventListener("change", syncRoleDesc);
+  syncRoleDesc();
+
+  function buildPrompt(text){
+    var r = ROLES[roleSel.value];
+    var depth = depthSel.value === "light"
+      ? "這次只做輕度校正：修掉錯字、明顯的口誤和不妥的用字，句子結構盡量保持原樣。"
+      : "這次做專業潤飾：可以重寫句子、調整語序，讓表達更貼近你的專業標準。";
+    return {
+      system: r.sys + "\n\n" + depth +
+        "\n\n規則：\n" +
+        "1. 只改用字遣詞與表達方式，不可以增加原本沒有講過的事實、人名、數字或事件。\n" +
+        "2. 如果每行開頭有 [分:秒] 這種時間標記，原樣保留在該行開頭。\n" +
+        "3. 保持原本的分行與段落順序。\n" +
+        "4. 全部用繁體中文（台灣用語）回覆，除非原文本來就是其他語言。\n" +
+        "5. 回覆必須是 JSON 物件，格式為 {\"revised\": \"改好的全文\", \"notes\": [\"提醒一\", \"提醒二\"]}。" +
+        "notes 是三到五條具體的督導提醒，指出你改了什麼、為什麼這樣改，用第二人稱對受督者說話。",
+      user: "以下是逐字稿，請依上述角度修整：\n\n" + text
+    };
+  }
+
+  function splitForLLM(text, size){
+    var lines = text.split("\n"), out = [], buf = "";
+    lines.forEach(function(l){
+      if(buf.length + l.length + 1 > size && buf){ out.push(buf); buf = l; }
+      else { buf += (buf ? "\n" : "") + l; }
+    });
+    if(buf.trim()) out.push(buf);
+    return out;
+  }
+
+  async function callChat(key, model, system, user){
+    var res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "Authorization":"Bearer "+key },
+      body: JSON.stringify({
+        model: model,
+        temperature: 0.3,
+        response_format: { type:"json_object" },
+        messages: [{ role:"system", content:system }, { role:"user", content:user }]
+      })
+    });
+    if(!res.ok){ throw new Error(res.status + " " + (await res.text()).slice(0,160)); }
+    var data = await res.json();
+    var raw = (data.choices && data.choices[0] && data.choices[0].message.content) || "";
+    try{
+      return JSON.parse(raw);
+    }catch(e){
+      return { revised: raw.replace(/^```(?:json)?|```$/g,"").trim(), notes: [] };
+    }
+  }
+
+  reviseBtn.addEventListener("click", async function(){
+    var key = apiKey.value.trim();
+    if(!key){ reviseState.textContent = "請先在上面的 OpenAI 金鑰設定貼上金鑰"; return; }
+    var text = ta.value.trim();
+    if(!text){ reviseState.textContent = "逐字稿是空的，先錄一段再潤稿"; return; }
+    if(recording){ reviseState.textContent = "錄音中，先按結束再潤稿"; return; }
+
+    reviseBtn.disabled = true;
+    revisedTa.classList.add("working");
+    var role = ROLES[roleSel.value];
+    var pieces = splitForLLM(text, 3500);
+    var revisedAll = [], notesAll = [];
+
+    try{
+      for(var i=0;i<pieces.length;i++){
+        reviseState.textContent = pieces.length > 1
+          ? "潤稿中… 第 " + (i+1) + " / " + pieces.length + " 段"
+          : "潤稿中，稍等一下…";
+        var p = buildPrompt(pieces[i]);
+        var out = await callChat(key, modelSel.value, p.system, p.user);
+        revisedAll.push((out.revised || "").trim());
+        if(Array.isArray(out.notes)) notesAll = notesAll.concat(out.notes);
+      }
+      revisedTa.value = revisedAll.join("\n");
+      reviseTitle.textContent = "改善後的逐字稿（" + role.label + "）";
+      notesEl.innerHTML = "";
+      notesAll.slice(0, 8).forEach(function(n){
+        var li = document.createElement("li");
+        li.textContent = String(n);
+        notesEl.appendChild(li);
+      });
+      notesWrap.hidden = notesAll.length === 0;
+      reviseOut.hidden = false;
+      reviseState.textContent = "完成，原稿還在上面沒有動";
+      reviseOut.scrollIntoView({ behavior:"smooth", block:"nearest" });
+    }catch(err){
+      reviseState.textContent = "潤稿失敗：" + err.message;
+    }
+    revisedTa.classList.remove("working");
+    reviseBtn.disabled = false;
+  });
+
+  $("useRevised").addEventListener("click", function(){
+    if(!current){ return; }
+    if(!confirm("用改好的版本取代原稿？取代後原本的逐字稿就不見了。")) return;
+    ta.value = revisedTa.value;
+    current.segments = parseTranscript();
+    dbPut(current); renderList(); updateCount();
+    reviseState.textContent = "已取代原稿";
+  });
+
+  $("dlRevised").addEventListener("click", function(){
+    var body = revisedTa.value.trim();
+    if(!body) return;
+    var name = current ? current.name : "逐字稿";
+    var head = name + "（" + ROLES[roleSel.value].label + "潤稿版）\n" + new Date().toLocaleString() + "\n\n";
+    var tail = notesEl.children.length
+      ? "\n\n── 督導提醒 ──\n" + Array.prototype.map.call(notesEl.children, function(li,i){ return (i+1)+". "+li.textContent; }).join("\n")
+      : "";
+    download(new Blob(["\uFEFF"+head+body+tail], {type:"text/plain;charset=utf-8"}),
+             safeName(name) + "-" + ROLES[roleSel.value].label + ".txt");
+  });
+
+  $("speakRevised").addEventListener("click", function(){
+    speakText(revisedTa.value);
+  });
+
+  $("dropRevised").addEventListener("click", function(){
+    reviseOut.hidden = true;
+    revisedTa.value = "";
+    reviseState.textContent = "";
+  });
+
   /* ---------- 朗讀 ---------- */
   var synth = window.speechSynthesis;
   var queue = [], qi = 0, speaking = false;
@@ -739,6 +936,18 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     ta.classList.remove("speaking");
     pauseBtn.disabled = true; stopBtn.disabled = true; pauseBtn.textContent = "暫停";
   }
+  function speakText(src){
+    if(!synth) return;
+    if(speaking){ stopSpeak(); return; }
+    var text = stripTS(src || "").trim();
+    if(!text){ stateEl.textContent = "沒有文字可以唸"; return; }
+    synth.cancel();
+    queue = chunkText(text); qi = 0; speaking = true;
+    speakBtn.textContent = "結束朗讀";
+    pauseBtn.disabled = false; stopBtn.disabled = false;
+    speakNext();
+  }
+
   speakBtn.addEventListener("click", function(){
     if(!synth) return;
     if(speaking){ stopSpeak(); return; }
