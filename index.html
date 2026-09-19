@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>錄音逐字稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#131A24;
+  --ink-soft:#4A5768;
+  --paper:#F4F5F2;
+  --panel:#FFFFFF;
+  --line:#D9DCD6;
+  --blue:#1F3A5F;
+  --blue-soft:#E7ECF3;
+  --signal:#D42D45;
+  --focus:#1F3A5F;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#EDEFF2; --ink-soft:#9AA6B6; --paper:#0F141B; --panel:#161D27;
+    --line:#2A3441; --blue:#7FA9DE; --blue-soft:#1C2836; --signal:#FF5C6E; --focus:#7FA9DE;
+  }
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Noto Sans TC",-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft JhengHei",sans-serif;
+  font-size:16px;line-height:1.65;-webkit-text-size-adjust:100%;
+}
+.wrap{max-width:660px;margin:0 auto;padding:28px 20px 64px}
+h1{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(28px,7vw,40px);line-height:1.15;margin:0 0 6px}
+.sub{color:var(--ink-soft);font-size:14.5px;margin:0 0 26px}
+h2{font-family:"Noto Serif TC",serif;font-weight:600;font-size:19px;margin:0 0 4px}
+.hint{color:var(--ink-soft);font-size:13.5px;margin:0 0 14px}
+
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px 20px 22px;text-align:center;margin-bottom:26px}
+.timer{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:clamp(40px,12vw,58px);font-weight:700;line-height:1;margin:0 0 4px}
+.state{color:var(--ink-soft);font-size:14px;min-height:22px;margin:0 0 18px}
+.state.live{color:var(--signal);font-weight:500}
+.meter{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:38px;margin:0 auto 20px;max-width:260px}
+.meter i{display:block;width:4px;height:4px;border-radius:2px;background:var(--line);transition:height .08s linear,background .2s}
+.meter i.on{background:var(--signal)}
+.rec-btn{width:88px;height:88px;border-radius:50%;border:2px solid var(--line);background:var(--panel);cursor:pointer;display:inline-grid;place-items:center;transition:border-color .2s,transform .12s}
+.rec-btn:hover{border-color:var(--signal)}
+.rec-btn:active{transform:scale(.96)}
+.rec-btn .dot{width:34px;height:34px;border-radius:50%;background:var(--signal);transition:all .2s ease}
+.rec-btn[data-on="1"] .dot{width:26px;height:26px;border-radius:5px}
+.rec-btn[data-on="1"]{border-color:var(--signal)}
+.rec-label{display:block;margin-top:12px;font-size:14px;color:var(--ink-soft)}
+.langrow{margin-top:18px;font-size:14px;color:var(--ink-soft)}
+
+section{border-top:1px solid var(--line);padding-top:24px;margin-top:26px}
+button,select,input,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 15px;border-radius:10px;cursor:pointer;transition:background .15s,border-color .15s}
+.btn:hover:not(:disabled){border-color:var(--blue);background:var(--blue-soft)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0F141B}}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08);background:var(--blue)}
+.btn.sm{padding:6px 11px;font-size:13.5px;border-radius:8px}
+.btn.danger:hover:not(:disabled){border-color:var(--signal);background:transparent;color:var(--signal)}
+.row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+select,input[type=text],input[type=password]{border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:9px;max-width:100%}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+textarea{width:100%;min-height:230px;resize:vertical;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px;line-height:1.9}
+.count{font-size:13px;color:var(--ink-soft);margin:8px 0 12px}
+audio{width:100%;margin:6px 0 12px}
+.empty{color:var(--ink-soft);font-size:14px;border:1px dashed var(--line);border-radius:14px;padding:16px;text-align:center}
+.slider{display:flex;align-items:center;gap:10px;margin:12px 0;font-size:14px;color:var(--ink-soft)}
+input[type=range]{flex:1;accent-color:var(--blue)}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--ink-soft);font-size:14px}
+.note{font-size:13px;color:var(--ink-soft);line-height:1.7}
+.warn{border-left:3px solid var(--signal);padding:10px 12px;border-radius:0 8px 8px 0;background:var(--blue-soft);font-size:13.5px;margin:12px 0}
+.speaking{border-color:var(--blue)!important}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-soft);margin:0 0 12px;cursor:pointer}
+.toggle input{width:17px;height:17px;accent-color:var(--blue)}
+
+.list{list-style:none;margin:0;padding:0}
+.list li{border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:10px;background:var(--panel)}
+.list li.active{border-color:var(--blue);box-shadow:inset 3px 0 0 var(--blue)}
+.item-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.item-name{font-weight:500;word-break:break-word}
+.item-meta{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
+.item-prev{font-size:13.5px;color:var(--ink-soft);margin:5px 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>錄音逐字稿</h1>
+  <p class="sub">邊錄邊轉文字，每段錄音各自存檔，可以標時間、下載，也能唸回來給你聽。</p>
+
+  <div class="stage">
+    <p class="timer" id="timer">00:00</p>
+    <p class="state" id="state">按下按鈕開始錄音</p>
+    <div class="meter" id="meter" aria-hidden="true"></div>
+    <button class="rec-btn" id="recBtn" data-on="0" aria-label="開始錄音"><span class="dot"></span></button>
+    <span class="rec-label" id="recLabel">開始錄音</span>
+    <div class="langrow">
+      <label for="lang">辨識語言 </label>
+      <select id="lang">
+        <option value="zh-TW" selected>國語（台灣）</option>
+        <option value="yue-Hant-HK">粵語（香港）</option>
+        <option value="zh-CN">普通話（中國）</option>
+        <option value="en-US">English (US)</option>
+        <option value="ja-JP">日本語</option>
+        <option value="ko-KR">한국어</option>
+      </select>
+    </div>
+    <div id="noSTT" class="warn" hidden>這個瀏覽器不支援即時語音辨識，仍然可以錄音存檔。建議改用 Chrome 或 Edge，或用下方的 Whisper 轉寫。</div>
+  </div>
+
+  <section style="border-top:0;margin-top:0;padding-top:0">
+    <h2 id="curTitle">目前這段</h2>
+    <p class="hint" id="curHint">還沒有錄音，按上面的按鈕開始。</p>
+    <div id="audioEmpty" class="empty">還沒有錄音</div>
+    <audio id="player" controls hidden></audio>
+    <div class="row">
+      <button class="btn" id="dlAudio" disabled>下載錄音檔</button>
+      <button class="btn" id="whisperBtn" disabled>用 Whisper 重新轉寫</button>
+    </div>
+    <details>
+      <summary>Whisper 設定（選用，想要更準的逐字稿再打開）</summary>
+      <p class="note">金鑰只存在這台裝置，不會上傳到網站；錄音檔會直接從你的瀏覽器送到 OpenAI。Whisper 轉寫回來的時間戳記比即時辨識更準。</p>
+      <div class="row" style="margin-top:8px">
+        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:200px">
+        <button class="btn" id="saveKey">記住金鑰</button>
+      </div>
+    </details>
+  </section>
+
+  <section>
+    <h2>逐字稿</h2>
+    <p class="hint">可以直接修改，改完自動存回這段錄音。</p>
+    <label class="toggle"><input type="checkbox" id="tsToggle"> 在每一句前面加上時間，例如 [01:23]</label>
+    <textarea id="transcript" placeholder="錄音開始後，文字會即時出現在這裡。"></textarea>
+    <p class="count" id="count">0 字</p>
+    <div class="row">
+      <button class="btn primary" id="dlText">下載逐字稿 .txt</button>
+      <button class="btn" id="copyText">複製全文</button>
+      <button class="btn" id="clearText">清空這段</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>唸給我聽</h2>
+    <p class="hint">朗讀時會自動略過時間標記；先用滑鼠選取一段，就只唸那一段。</p>
+    <div class="row">
+      <label for="voice" class="note">聲音</label>
+      <select id="voice" style="flex:1;min-width:180px"></select>
+    </div>
+    <div class="slider">
+      <label for="rate">語速</label>
+      <input type="range" id="rate" min="0.5" max="1.8" step="0.1" value="1">
+      <span id="rateVal">1.0×</span>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="speakBtn">開始朗讀</button>
+      <button class="btn" id="pauseBtn" disabled>暫停</button>
+      <button class="btn" id="stopBtn" disabled>停止</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>我的錄音</h2>
+    <p class="hint">每段錄音和逐字稿都留在這台裝置的瀏覽器裡，換裝置或清除瀏覽器資料就會不見。</p>
+    <ul class="list" id="list"></ul>
+    <div id="listEmpty" class="empty">錄完的段落會列在這裡</div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="dlAll">把全部逐字稿合併下載</button>
+    </div>
+  </section>
+
+  <footer>
+    錄音、文字都存在你自己的裝置，這個網頁沒有伺服器。第一次使用要允許麥克風權限，並且要用 https 網址開啟。
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var KEY_API = "rec_openai_key_v1", KEY_TS = "rec_show_ts_v1";
+
+  var recBtn=$("recBtn"), recLabel=$("recLabel"), timerEl=$("timer"), stateEl=$("state"),
+      meter=$("meter"), langSel=$("lang"), ta=$("transcript"), countEl=$("count"),
+      player=$("player"), audioEmpty=$("audioEmpty"), dlAudio=$("dlAudio"),
+      whisperBtn=$("whisperBtn"), apiKey=$("apiKey"), saveKey=$("saveKey"),
+      voiceSel=$("voice"), rate=$("rate"), rateVal=$("rateVal"),
+      speakBtn=$("speakBtn"), pauseBtn=$("pauseBtn"), stopBtn=$("stopBtn"),
+      tsToggle=$("tsToggle"), listEl=$("list"), listEmpty=$("listEmpty"),
+      curTitle=$("curTitle"), curHint=$("curHint");
+
+  var stream=null, recorder=null, chunks=[], recording=false;
+  var recognizer=null, wantRecog=false;
+  var startedAt=0, tick=null, audioCtx=null, analyser=null, raf=null;
+  var sessions=[], current=null, saveTimer=null, curURL=null;
+  var showTS=false;
+
+  /* ---------- 工具 ---------- */
+  function two(n){ return n<10 ? "0"+n : ""+n; }
+  function fmtSec(s){
+    s = Math.max(0, Math.floor(s));
+    var h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
+    return (h>0 ? two(h)+":" : "") + two(m)+":"+two(x);
+  }
+  function stampName(d){
+    return d.getFullYear()+"-"+two(d.getMonth()+1)+"-"+two(d.getDate())+" "+two(d.getHours())+":"+two(d.getMinutes());
+  }
+  function fileStamp(iso){
+    var d = new Date(iso);
+    return d.getFullYear()+two(d.getMonth()+1)+two(d.getDate())+"-"+two(d.getHours())+two(d.getMinutes())+two(d.getSeconds());
+  }
+  function safeName(s){ return (s||"逐字稿").replace(/[\\/:*?"<>|]/g,"-").slice(0,60); }
+  function download(blob, name){
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href=url; a.download=name; document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }
+  function extOf(mime){
+    if(!mime) return "webm";
+    if(mime.indexOf("mp4")>-1) return "m4a";
+    if(mime.indexOf("ogg")>-1) return "ogg";
+    return "webm";
+  }
+  function segText(segs){
+    return segs.map(function(s){ return s.text; }).join("\n").trim();
+  }
+
+  /* ---------- 儲存（IndexedDB，失敗就退回記憶體） ---------- */
+  var dbp = null, dbOK = true;
+  function openDB(){
+    if(dbp) return dbp;
+    dbp = new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error("no idb"));
+      var r = indexedDB.open("recdb", 1);
+      r.onupgradeneeded = function(e){
+        var db = e.target.result;
+        if(!db.objectStoreNames.contains("rec")) db.createObjectStore("rec", { keyPath:"id" });
+      };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+    return dbp;
+  }
+  function tx(mode, fn){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var t = db.transaction("rec", mode), st = t.objectStore("rec"), out;
+        out = fn(st);
+        t.oncomplete = function(){ res(out && out.result !== undefined ? out.result : out); };
+        t.onerror = function(){ rej(t.error); };
+      });
+    });
+  }
+  function dbPut(s){
+    return tx("readwrite", function(st){ return st.put(s); }).catch(function(){ dbOK = false; });
+  }
+  function dbDel(id){
+    return tx("readwrite", function(st){ return st.delete(id); }).catch(function(){});
+  }
+  function dbAll(){
+    return tx("readonly", function(st){ return st.getAll(); }).catch(function(){ dbOK = false; return []; });
+  }
+
+  /* ---------- 音量條 ---------- */
+  for(var i=0;i<28;i++) meter.appendChild(document.createElement("i"));
+  var bars = meter.querySelectorAll("i");
+  function startMeter(st){
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      var src = audioCtx.createMediaStreamSource(st);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      src.connect(analyser);
+      var data = new Uint8Array(analyser.frequencyBinCount);
+      (function draw(){
+        raf = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(data);
+        for(var b=0;b<bars.length;b++){
+          var v = data[Math.floor(b*data.length/bars.length)]/255;
+          bars[b].style.height = (4 + Math.round(v*34)) + "px";
+          if(v>0.06) bars[b].classList.add("on"); else bars[b].classList.remove("on");
+        }
+      })();
+    }catch(e){}
+  }
+  function stopMeter(){
+    if(raf){ cancelAnimationFrame(raf); raf=null; }
+    for(var b=0;b<bars.length;b++){ bars[b].style.height="4px"; bars[b].classList.remove("on"); }
+    if(audioCtx){ try{ audioCtx.close(); }catch(e){} audioCtx=null; }
+  }
+
+  /* ---------- 逐字稿顯示與解析 ---------- */
+  try{ showTS = localStorage.getItem(KEY_TS) === "1"; }catch(e){}
+  tsToggle.checked = showTS;
+
+  function renderTranscript(extra){
+    if(!current){ ta.value = extra || ""; updateCount(); return; }
+    var lines = current.segments.map(function(s){
+      return showTS ? "["+fmtSec(s.t)+"] "+s.text : s.text;
+    });
+    var txt = lines.join("\n");
+    if(extra){ txt += (txt ? "\n" : "") + extra; }
+    ta.value = txt;
+    ta.scrollTop = ta.scrollHeight;
+    updateCount();
+  }
+  function parseTranscript(){
+    var out = [], lines = ta.value.split("\n");
+    lines.forEach(function(line){
+      if(!line.trim()) return;
+      var m = line.match(/^\[(\d{1,3}):(\d{2})(?::(\d{2}))?\]\s?/);
+      if(m){
+        var t = m[3] !== undefined ? (+m[1]*3600 + +m[2]*60 + +m[3]) : (+m[1]*60 + +m[2]);
+        out.push({ t:t, text:line.slice(m[0].length) });
+      }else{
+        out.push({ t:null, text:line });
+      }
+    });
+    return out;
+  }
+  function updateCount(){
+    var n = ta.value.replace(/^\[\d{1,3}:\d{2}(?::\d{2})?\]\s?/gm,"").replace(/\s/g,"").length;
+    countEl.textContent = n + " 字";
+  }
+  function queueSave(){
+    if(!current) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      current.segments = parseTranscript();
+      dbPut(current);
+      renderList();
+    }, 600);
+  }
+
+  tsToggle.addEventListener("change", function(){
+    if(current) current.segments = parseTranscript();
+    showTS = tsToggle.checked;
+    try{ localStorage.setItem(KEY_TS, showTS ? "1" : "0"); }catch(e){}
+    renderTranscript();
+    if(current) dbPut(current);
+  });
+  ta.addEventListener("input", function(){ updateCount(); queueSave(); });
+
+  /* ---------- 語音辨識 ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) $("noSTT").hidden = false;
+
+  function startRecog(){
+    if(!SR) return;
+    recognizer = new SR();
+    recognizer.lang = langSel.value;
+    recognizer.continuous = true;
+    recognizer.interimResults = true;
+    recognizer.onresult = function(ev){
+      var interim = "";
+      for(var i=ev.resultIndex;i<ev.results.length;i++){
+        var txt = ev.results[i][0].transcript.trim();
+        if(ev.results[i].isFinal){
+          if(txt && current){
+            current.segments.push({ t: Math.floor((Date.now()-startedAt)/1000), text: txt });
+          }
+        }else{
+          interim += ev.results[i][0].transcript;
+        }
+      }
+      renderTranscript(interim);
+    };
+    recognizer.onerror = function(ev){
+      if(ev.error === "not-allowed" || ev.error === "service-not-allowed"){
+        wantRecog = false;
+        stateEl.textContent = "麥克風權限被拒絕，無法辨識文字";
+      }
+    };
+    recognizer.onend = function(){
+      if(wantRecog) setTimeout(function(){ if(wantRecog){ try{ recognizer.start(); }catch(e){} } }, 260);
+    };
+    try{ recognizer.start(); }catch(e){}
+  }
+  function stopRecog(){
+    wantRecog = false;
+    if(recognizer){ try{ recognizer.stop(); }catch(e){} recognizer = null; }
+  }
+
+  /* ---------- 錄音 ---------- */
+  function pickMime(){
+    var list = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"];
+    for(var i=0;i<list.length;i++){
+      if(window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i];
+    }
+    return "";
+  }
+
+  async function startRec(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      stateEl.textContent = "這個瀏覽器不支援錄音，請改用 Chrome 或 Edge";
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+      });
+    }catch(e){
+      stateEl.textContent = "拿不到麥克風，請允許麥克風權限後再試一次";
+      return;
+    }
+
+    stopSpeak();
+    chunks = [];
+    var mime = pickMime();
+    try{ recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+    catch(e){ recorder = new MediaRecorder(stream); }
+    recorder.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = finishRec;
+    recorder.start();
+
+    var now = new Date();
+    current = {
+      id: String(Date.now()),
+      name: "錄音 " + stampName(now),
+      createdAt: now.toISOString(),
+      duration: 0,
+      mime: mime || "audio/webm",
+      blob: null,
+      segments: []
+    };
+    renderTranscript();
+    setCurrentAudio(null);
+
+    wantRecog = true;
+    startRecog();
+    startMeter(stream);
+
+    recording = true;
+    startedAt = Date.now();
+    timerEl.textContent = "00:00";
+    tick = setInterval(function(){ timerEl.textContent = fmtSec((Date.now()-startedAt)/1000); }, 250);
+
+    recBtn.dataset.on = "1";
+    recBtn.setAttribute("aria-label","結束錄音");
+    recLabel.textContent = "結束錄音";
+    stateEl.textContent = SR ? "錄音中，文字會即時出現" : "錄音中";
+    stateEl.classList.add("live");
+    langSel.disabled = true;
+    curTitle.textContent = current.name;
+    curHint.textContent = "錄音中…";
+  }
+
+  function stopRec(){
+    if(recorder && recorder.state !== "inactive") recorder.stop();
+    stopRecog();
+    if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+    stopMeter();
+    if(tick){ clearInterval(tick); tick = null; }
+    recording = false;
+    recBtn.dataset.on = "0";
+    recBtn.setAttribute("aria-label","開始錄音");
+    recLabel.textContent = "開始錄音";
+    stateEl.classList.remove("live");
+    langSel.disabled = false;
+  }
+
+  function finishRec(){
+    if(!current) return;
+    current.duration = Date.now() - startedAt;
+    var type = (chunks[0] && chunks[0].type) || current.mime;
+    current.mime = type;
+    current.blob = new Blob(chunks, { type: type });
+    renderTranscript();
+    setCurrentAudio(current.blob);
+    sessions.unshift(current);
+    dbPut(current).then(renderList);
+    renderList();
+    stateEl.textContent = dbOK ? "錄音完成，已存成一段" : "錄音完成（這台裝置無法永久保存，重新整理會消失）";
+    curHint.textContent = "長度 " + fmtSec(current.duration/1000) + "，可以試聽、修改逐字稿或下載。";
+  }
+
+  recBtn.addEventListener("click", function(){ recording ? stopRec() : startRec(); });
+
+  function setCurrentAudio(blob){
+    if(curURL){ URL.revokeObjectURL(curURL); curURL = null; }
+    if(blob){
+      curURL = URL.createObjectURL(blob);
+      player.src = curURL; player.hidden = false; audioEmpty.hidden = true;
+      dlAudio.disabled = false; whisperBtn.disabled = false;
+    }else{
+      player.removeAttribute("src"); player.hidden = true; audioEmpty.hidden = false;
+      dlAudio.disabled = true; whisperBtn.disabled = true;
+    }
+  }
+
+  dlAudio.addEventListener("click", function(){
+    if(!current || !current.blob) return;
+    download(current.blob, safeName(current.name) + "." + extOf(current.mime));
+  });
+
+  /* ---------- 錄音清單 ---------- */
+  function renderList(){
+    listEl.innerHTML = "";
+    if(!sessions.length){ listEmpty.hidden = false; return; }
+    listEmpty.hidden = true;
+    sessions.forEach(function(s){
+      var li = document.createElement("li");
+      if(current && s.id === current.id) li.className = "active";
+
+      var top = document.createElement("div");
+      top.className = "item-top";
+      var name = document.createElement("span");
+      name.className = "item-name"; name.textContent = s.name;
+      var meta = document.createElement("span");
+      meta.className = "item-meta"; meta.textContent = fmtSec(s.duration/1000);
+      top.appendChild(name); top.appendChild(meta);
+
+      var prev = document.createElement("p");
+      prev.className = "item-prev";
+      var t = segText(s.segments);
+      prev.textContent = t ? t.replace(/\n/g," ") : "（沒有文字）";
+
+      var row = document.createElement("div");
+      row.className = "row";
+      row.appendChild(mkBtn("開啟", function(){ loadSession(s.id); }));
+      row.appendChild(mkBtn("改名", function(){
+        var n = prompt("這段錄音的名稱", s.name);
+        if(n && n.trim()){ s.name = n.trim(); dbPut(s); renderList(); if(current && current.id===s.id) curTitle.textContent = s.name; }
+      }));
+      row.appendChild(mkBtn(".txt", function(){
+        var body = s.segments.map(function(x){
+          return (showTS && x.t !== null ? "["+fmtSec(x.t)+"] " : "") + x.text;
+        }).join("\n").trim();
+        if(!body){ alert("這段沒有文字"); return; }
+        var head = s.name + "\n" + new Date(s.createdAt).toLocaleString() + "　長度 " + fmtSec(s.duration/1000) + "\n\n";
+        download(new Blob(["\uFEFF"+head+body], {type:"text/plain;charset=utf-8"}), safeName(s.name)+".txt");
+      }));
+      row.appendChild(mkBtn("音檔", function(){
+        if(!s.blob){ alert("這段的音檔已經不在了"); return; }
+        download(s.blob, safeName(s.name)+"."+extOf(s.mime));
+      }));
+      var del = mkBtn("刪除", function(){
+        if(!confirm("刪除「"+s.name+"」？錄音和逐字稿都會不見。")) return;
+        sessions = sessions.filter(function(x){ return x.id !== s.id; });
+        dbDel(s.id);
+        if(current && current.id === s.id){ current = null; ta.value=""; updateCount(); setCurrentAudio(null); curTitle.textContent="目前這段"; curHint.textContent="還沒有選擇錄音。"; }
+        renderList();
+      });
+      del.className = "btn sm danger";
+
+      li.appendChild(top); li.appendChild(prev); li.appendChild(row); row.appendChild(del);
+      listEl.appendChild(li);
+    });
+  }
+  function mkBtn(label, fn){
+    var b = document.createElement("button");
+    b.className = "btn sm"; b.textContent = label; b.addEventListener("click", fn);
+    return b;
+  }
+
+  function loadSession(id){
+    if(recording){ alert("錄音中，先按結束再切換。"); return; }
+    var s = sessions.filter(function(x){ return x.id === id; })[0];
+    if(!s) return;
+    stopSpeak();
+    current = s;
+    renderTranscript();
+    setCurrentAudio(s.blob || null);
+    curTitle.textContent = s.name;
+    curHint.textContent = new Date(s.createdAt).toLocaleString() + "　長度 " + fmtSec(s.duration/1000);
+    timerEl.textContent = fmtSec(s.duration/1000);
+    stateEl.textContent = "已開啟這段";
+    renderList();
+    document.querySelector("h2#curTitle").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+
+  /* ---------- 逐字稿按鈕 ---------- */
+  $("dlText").addEventListener("click", function(){
+    if(!current || !ta.value.trim()){ stateEl.textContent = "逐字稿是空的，先錄一段再下載"; return; }
+    var head = current.name + "\n" + new Date(current.createdAt).toLocaleString() + "　長度 " + fmtSec(current.duration/1000) + "\n\n";
+    download(new Blob(["\uFEFF"+head+ta.value.trim()], {type:"text/plain;charset=utf-8"}),
+             safeName(current.name)+".txt");
+  });
+
+  $("copyText").addEventListener("click", function(){
+    var btn = this;
+    var done = function(){ btn.textContent="已複製"; setTimeout(function(){ btn.textContent="複製全文"; },1600); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(done, function(){ ta.select(); document.execCommand("copy"); done(); });
+    }else{ ta.select(); document.execCommand("copy"); done(); }
+  });
+
+  $("clearText").addEventListener("click", function(){
+    if(!current) return;
+    if(!ta.value.trim() || confirm("清空這段的逐字稿？錄音檔會留著。")){
+      current.segments = []; ta.value = ""; updateCount(); dbPut(current); renderList();
+    }
+  });
+
+  $("dlAll").addEventListener("click", function(){
+    if(!sessions.length){ alert("還沒有任何錄音"); return; }
+    var parts = sessions.slice().sort(function(a,b){ return new Date(a.createdAt) - new Date(b.createdAt); })
+      .map(function(s){
+        var body = s.segments.map(function(x){
+          return (showTS && x.t !== null ? "["+fmtSec(x.t)+"] " : "") + x.text;
+        }).join("\n").trim();
+        return "── " + s.name + " ──\n" + new Date(s.createdAt).toLocaleString() +
+               "　長度 " + fmtSec(s.duration/1000) + "\n\n" + (body || "（沒有文字）");
+      });
+    download(new Blob(["\uFEFF"+parts.join("\n\n\n")], {type:"text/plain;charset=utf-8"}), "全部逐字稿-"+fileStamp(new Date().toISOString())+".txt");
+  });
+
+  /* ---------- Whisper ---------- */
+  try{ var k = localStorage.getItem(KEY_API); if(k) apiKey.value = k; }catch(e){}
+  saveKey.addEventListener("click", function(){
+    try{ localStorage.setItem(KEY_API, apiKey.value.trim()); }catch(e){}
+    saveKey.textContent = "已記住";
+    setTimeout(function(){ saveKey.textContent = "記住金鑰"; }, 1600);
+  });
+
+  whisperBtn.addEventListener("click", async function(){
+    var key = apiKey.value.trim();
+    if(!key){ stateEl.textContent = "請先在 Whisper 設定裡貼上 API 金鑰"; return; }
+    if(!current || !current.blob) return;
+    whisperBtn.disabled = true;
+    var old = whisperBtn.textContent;
+    whisperBtn.textContent = "轉寫中…";
+    stateEl.textContent = "正在送去轉寫，長一點的錄音要等一下";
+    try{
+      var fd = new FormData();
+      fd.append("file", current.blob, "audio." + extOf(current.mime));
+      fd.append("model", "whisper-1");
+      fd.append("language", langSel.value.split("-")[0]);
+      fd.append("response_format", "verbose_json");
+      var res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method:"POST", headers:{ "Authorization":"Bearer "+key }, body: fd
+      });
+      if(!res.ok){ throw new Error(res.status + " " + (await res.text()).slice(0,160)); }
+      var data = await res.json();
+      var segs = [];
+      if(data.segments && data.segments.length){
+        segs = data.segments.map(function(s){ return { t: Math.floor(s.start), text: (s.text||"").trim() }; })
+                            .filter(function(s){ return s.text; });
+      }else if((data.text||"").trim()){
+        segs = [{ t:0, text: data.text.trim() }];
+      }
+      if(segs.length){
+        current.segments = segs;
+        renderTranscript(); dbPut(current); renderList();
+        stateEl.textContent = "Whisper 轉寫完成，已換成新的逐字稿";
+      }else{
+        stateEl.textContent = "這段錄音沒有辨識出內容";
+      }
+    }catch(err){
+      stateEl.textContent = "轉寫失敗：" + err.message;
+    }
+    whisperBtn.textContent = old;
+    whisperBtn.disabled = false;
+  });
+
+  /* ---------- 朗讀 ---------- */
+  var synth = window.speechSynthesis;
+  var queue = [], qi = 0, speaking = false;
+
+  function loadVoices(){
+    if(!synth) return;
+    var vs = synth.getVoices();
+    if(!vs.length) return;
+    voiceSel.innerHTML = "";
+    vs = vs.slice().sort(function(a,b){
+      var az = /^(zh|yue)/.test(a.lang)?0:1, bz = /^(zh|yue)/.test(b.lang)?0:1;
+      return az - bz || a.lang.localeCompare(b.lang);
+    });
+    vs.forEach(function(v,i){
+      var o = document.createElement("option");
+      o.value = i; o.textContent = v.name + "（" + v.lang + "）";
+      voiceSel.appendChild(o);
+    });
+    voiceSel._voices = vs;
+    var want = langSel.value.split("-")[0];
+    for(var i=0;i<vs.length;i++){
+      if(vs[i].lang.replace("_","-").indexOf(want) === 0){ voiceSel.value = i; break; }
+    }
+  }
+  if(synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+  else { speakBtn.disabled = true; speakBtn.textContent = "這個瀏覽器不支援朗讀"; }
+  langSel.addEventListener("change", loadVoices);
+  rate.addEventListener("input", function(){ rateVal.textContent = Number(rate.value).toFixed(1)+"×"; });
+
+  function stripTS(s){ return s.replace(/^\[\d{1,3}:\d{2}(?::\d{2})?\]\s?/gm, ""); }
+
+  function chunkText(t){
+    t = t.replace(/\r/g,"");
+    var breaks = "。．.!！?？；;\n", parts = [], cur = "";
+    for(var i=0;i<t.length;i++){
+      cur += t[i];
+      if(breaks.indexOf(t[i]) > -1){ parts.push(cur); cur = ""; }
+    }
+    if(cur) parts.push(cur);
+    var out = [], buf = "";
+    parts.forEach(function(p){
+      if((buf+p).length > 160){ if(buf.trim()) out.push(buf); buf = p; }
+      else buf += p;
+    });
+    if(buf.trim()) out.push(buf);
+    var fin = [];
+    out.forEach(function(s){
+      while(s.length > 200){ fin.push(s.slice(0,200)); s = s.slice(200); }
+      if(s.trim()) fin.push(s);
+    });
+    return fin;
+  }
+
+  function speakNext(){
+    if(qi >= queue.length){ stopSpeak(); return; }
+    var u = new SpeechSynthesisUtterance(queue[qi]);
+    var vs = voiceSel._voices;
+    if(vs && vs[voiceSel.value]){ u.voice = vs[voiceSel.value]; u.lang = vs[voiceSel.value].lang; }
+    else u.lang = langSel.value;
+    u.rate = Number(rate.value);
+    u.onend = function(){ qi++; speakNext(); };
+    u.onerror = function(){ qi++; speakNext(); };
+    synth.speak(u);
+  }
+  function stopSpeak(){
+    if(synth){ try{ synth.cancel(); }catch(e){} }
+    queue = []; qi = 0; speaking = false;
+    speakBtn.textContent = "開始朗讀";
+    ta.classList.remove("speaking");
+    pauseBtn.disabled = true; stopBtn.disabled = true; pauseBtn.textContent = "暫停";
+  }
+  speakBtn.addEventListener("click", function(){
+    if(!synth) return;
+    if(speaking){ stopSpeak(); return; }
+    var sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).trim();
+    var text = stripTS(sel || ta.value).trim();
+    if(!text){ stateEl.textContent = "逐字稿是空的，沒有東西可以唸"; return; }
+    synth.cancel();
+    queue = chunkText(text); qi = 0; speaking = true;
+    speakBtn.textContent = "結束朗讀";
+    ta.classList.add("speaking");
+    pauseBtn.disabled = false; stopBtn.disabled = false;
+    speakNext();
+  });
+  pauseBtn.addEventListener("click", function(){
+    if(!synth || !speaking) return;
+    if(synth.paused){ synth.resume(); pauseBtn.textContent = "暫停"; }
+    else { synth.pause(); pauseBtn.textContent = "繼續"; }
+  });
+  stopBtn.addEventListener("click", stopSpeak);
+  window.addEventListener("beforeunload", function(){ if(synth) try{ synth.cancel(); }catch(e){} });
+
+  /* ---------- 開場載入 ---------- */
+  dbAll().then(function(rows){
+    sessions = (rows||[]).sort(function(a,b){ return new Date(b.createdAt) - new Date(a.createdAt); });
+    renderList();
+    if(sessions.length){
+      current = sessions[0];
+      renderTranscript();
+      setCurrentAudio(current.blob || null);
+      curTitle.textContent = current.name;
+      curHint.textContent = new Date(current.createdAt).toLocaleString() + "　長度 " + fmtSec(current.duration/1000);
+      timerEl.textContent = fmtSec(current.duration/1000);
+      stateEl.textContent = "已載入最近一段，按按鈕可以開始新的錄音";
+    }
+  });
+})();
+</script>
+</body>
+</html>
