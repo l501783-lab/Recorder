@@ -123,6 +123,7 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
         <option value="ko-KR">한국어</option>
       </select>
     </div>
+    <p class="note" id="sttInfo" style="margin:10px 0 0">　</p>
     <div id="noSTT" class="warn" hidden>這個瀏覽器不支援即時語音辨識，仍然可以錄音存檔。建議改用 Chrome 或 Edge，或用下方的 Whisper 轉寫。</div>
   </div>
 
@@ -135,11 +136,22 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
       <button class="btn" id="dlAudio" disabled>下載錄音檔</button>
       <button class="btn" id="whisperBtn" disabled>用 Whisper 重新轉寫</button>
     </div>
-    <details>
-      <summary>OpenAI 金鑰設定（選用，Whisper 轉寫和 AI 潤稿都會用到）</summary>
-      <p class="note">金鑰只存在這台裝置，不會上傳到網站；錄音檔和逐字稿會直接從你的瀏覽器送到 OpenAI。Whisper 轉寫回來的時間戳記比即時辨識更準。</p>
+    <details id="keyBox">
+      <summary>AI 金鑰設定（選用，Whisper 轉寫和潤稿會用到）</summary>
+      <p class="note">金鑰只存在這台裝置的瀏覽器，不會上傳到這個網站。要用哪一家就填哪一家，Whisper 轉寫只吃 OpenAI 的金鑰。</p>
+      <div class="row" style="margin-top:10px">
+        <label class="note" style="width:74px">OpenAI</label>
+        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:190px">
+      </div>
       <div class="row" style="margin-top:8px">
-        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:200px">
+        <label class="note" style="width:74px">Claude</label>
+        <input type="password" id="keyAnthropic" placeholder="sk-ant-..." autocomplete="off" style="flex:1;min-width:190px">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="note" style="width:74px">Gemini</label>
+        <input type="password" id="keyGoogle" placeholder="AIza..." autocomplete="off" style="flex:1;min-width:190px">
+      </div>
+      <div class="row" style="margin-top:10px">
         <button class="btn" id="saveKey">記住金鑰</button>
       </div>
     </details>
@@ -171,13 +183,23 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     </div>
     <p class="note" id="roleDesc" style="margin:8px 0 0"></p>
     <div class="row" style="margin-top:12px">
+      <label for="provider" class="note" style="width:74px">用哪一家</label>
+      <select id="provider">
+        <option value="openai" selected>OpenAI</option>
+        <option value="anthropic">Claude</option>
+        <option value="google">Gemini</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="model" class="note" style="width:74px">模型</label>
+      <input type="text" id="model" list="modelList" style="flex:1;min-width:170px" autocomplete="off">
+      <datalist id="modelList"></datalist>
+      <button class="btn sm" id="fetchModels">取得清單</button>
+    </div>
+    <div class="row" style="margin-top:12px">
       <select id="depth">
         <option value="light">輕度校正，只動明顯不妥的字</option>
         <option value="full" selected>專業潤飾，可以重寫句子</option>
-      </select>
-      <select id="model">
-        <option value="gpt-4o-mini" selected>gpt-4o-mini（快、便宜）</option>
-        <option value="gpt-4o">gpt-4o（更細緻）</option>
       </select>
     </div>
     <div class="row" style="margin-top:12px">
@@ -407,13 +429,34 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
   /* ---------- 語音辨識 ---------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR) $("noSTT").hidden = false;
+  setTimeout(function(){
+    if(!SR) setStt("這個瀏覽器不支援即時辨識，只會錄音");
+    else setStt("辨識可用，按錄音鍵就會開始");
+  }, 0);
+
+  var sttInfo = $("sttInfo"), sttCount = 0, sttWatch = null;
+  function setStt(msg){ sttInfo.textContent = msg || "　"; }
+
+  var STT_ERR = {
+    "no-speech": "剛剛沒聽到聲音，會繼續等",
+    "audio-capture": "辨識拿不到麥克風。錄音還在進行，結束後可以用 Whisper 轉寫",
+    "not-allowed": "麥克風權限被拒絕，無法辨識",
+    "service-not-allowed": "瀏覽器不允許使用辨識服務，改用 Chrome 或 Edge 試試",
+    "network": "辨識服務連不上，請檢查網路",
+    "language-not-supported": "這個瀏覽器不支援選擇的辨識語言",
+    "bad-grammar": "辨識設定有誤"
+  };
 
   function startRecog(){
-    if(!SR) return;
+    if(!SR){ setStt("這個瀏覽器不支援即時辨識"); return; }
+    sttCount = 0;
     recognizer = new SR();
     recognizer.lang = langSel.value;
     recognizer.continuous = true;
     recognizer.interimResults = true;
+    recognizer.maxAlternatives = 1;
+    recognizer.onstart = function(){ setStt("辨識已啟動，開始說話吧"); };
+    recognizer.onspeechstart = function(){ setStt("聽到聲音了…"); };
     recognizer.onresult = function(ev){
       var interim = "";
       for(var i=ev.resultIndex;i<ev.results.length;i++){
@@ -421,6 +464,8 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
         if(ev.results[i].isFinal){
           if(txt && current){
             current.segments.push({ t: Math.floor((Date.now()-startedAt)/1000), text: txt });
+            sttCount++;
+            setStt("辨識中，已收到 " + sttCount + " 句");
           }
         }else{
           interim += ev.results[i][0].transcript;
@@ -429,18 +474,31 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
       renderTranscript(interim);
     };
     recognizer.onerror = function(ev){
-      if(ev.error === "not-allowed" || ev.error === "service-not-allowed"){
+      if(ev.error === "aborted") return;
+      setStt(STT_ERR[ev.error] || ("辨識錯誤：" + ev.error));
+      if(ev.error === "not-allowed" || ev.error === "service-not-allowed" || ev.error === "language-not-supported"){
         wantRecog = false;
-        stateEl.textContent = "麥克風權限被拒絕，無法辨識文字";
       }
     };
     recognizer.onend = function(){
       if(wantRecog) setTimeout(function(){ if(wantRecog){ try{ recognizer.start(); }catch(e){} } }, 260);
     };
-    try{ recognizer.start(); }catch(e){}
+    try{
+      recognizer.start();
+      setStt("正在啟動辨識…");
+    }catch(e){
+      setStt("辨識啟動失敗：" + e.message);
+    }
+    clearTimeout(sttWatch);
+    sttWatch = setTimeout(function(){
+      if(recording && sttCount === 0){
+        setStt("已經 12 秒沒有辨識到文字。麥克風有收到聲音的話，多半是瀏覽器的辨識沒生效，錄音仍在進行，結束後可用 Whisper 轉寫");
+      }
+    }, 12000);
   }
   function stopRecog(){
     wantRecog = false;
+    clearTimeout(sttWatch);
     if(recognizer){ try{ recognizer.stop(); }catch(e){} recognizer = null; }
   }
 
@@ -453,45 +511,20 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     return "";
   }
 
-  async function startRec(){
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      stateEl.textContent = "這個瀏覽器不支援錄音，請改用 Chrome 或 Edge";
-      return;
-    }
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-      });
-    }catch(e){
-      stateEl.textContent = "拿不到麥克風，請允許麥克風權限後再試一次";
-      return;
-    }
-
+  function beginSession(){
     stopSpeak();
-    chunks = [];
-    var mime = pickMime();
-    try{ recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
-    catch(e){ recorder = new MediaRecorder(stream); }
-    recorder.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
-    recorder.onstop = finishRec;
-    recorder.start();
-
     var now = new Date();
     current = {
       id: String(Date.now()),
       name: "錄音 " + stampName(now),
       createdAt: now.toISOString(),
       duration: 0,
-      mime: mime || "audio/webm",
+      mime: "audio/webm",
       blob: null,
       segments: []
     };
     renderTranscript();
     setCurrentAudio(null);
-
-    wantRecog = true;
-    startRecog();
-    startMeter(stream);
 
     recording = true;
     startedAt = Date.now();
@@ -501,12 +534,64 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     recBtn.dataset.on = "1";
     recBtn.setAttribute("aria-label","結束錄音");
     recLabel.textContent = "結束錄音";
-    stateEl.textContent = SR ? "錄音中，文字會即時出現" : "錄音中";
+    stateEl.textContent = SR ? "錄音中，文字會即時出現" : "錄音中（這個瀏覽器不會即時出字）";
     stateEl.classList.add("live");
     langSel.disabled = true;
     curTitle.textContent = current.name;
     curHint.textContent = "錄音中…";
   }
+
+  function abortSession(msg){
+    wantRecog = false; stopRecog();
+    if(tick){ clearInterval(tick); tick = null; }
+    recording = false;
+    recBtn.dataset.on = "0";
+    recBtn.setAttribute("aria-label","開始錄音");
+    recLabel.textContent = "開始錄音";
+    stateEl.classList.remove("live");
+    stateEl.textContent = msg;
+    langSel.disabled = false;
+    timerEl.textContent = "00:00";
+    current = null; ta.value = ""; updateCount();
+    curTitle.textContent = "目前這段";
+    curHint.textContent = "還沒有選擇錄音。";
+  }
+
+  async function attachRecorder(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+      });
+    }catch(e){
+      abortSession("拿不到麥克風，請允許麥克風權限後再試一次");
+      return;
+    }
+    if(!recording){ // 使用者在授權過程中就按了停止
+      stream.getTracks().forEach(function(t){ t.stop(); }); stream = null;
+      return;
+    }
+    chunks = [];
+    var mime = pickMime();
+    try{ recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+    catch(e){ recorder = new MediaRecorder(stream); }
+    if(current) current.mime = mime || "audio/webm";
+    recorder.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = finishRec;
+    recorder.start();
+    startMeter(stream);
+  }
+
+  recBtn.addEventListener("click", function(){
+    if(recording){ stopRec(); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      stateEl.textContent = "這個瀏覽器不支援錄音，請改用 Chrome 或 Edge";
+      return;
+    }
+    beginSession();
+    // 辨識一定要在使用者點擊的當下啟動，等 getUserMedia 回來就來不及了
+    if(SR){ wantRecog = true; startRecog(); }
+    attachRecorder();
+  });
 
   function stopRec(){
     if(recorder && recorder.state !== "inactive") recorder.stop();
@@ -534,10 +619,13 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     dbPut(current).then(renderList);
     renderList();
     stateEl.textContent = dbOK ? "錄音完成，已存成一段" : "錄音完成（這台裝置無法永久保存，重新整理會消失）";
+    if(!current.segments.length){
+      setStt("這段沒有辨識到任何文字。可以先播放確認錄音有聲音，再用下面的「用 Whisper 重新轉寫」轉一次");
+    }else{
+      setStt("完成，共 " + current.segments.length + " 句");
+    }
     curHint.textContent = "長度 " + fmtSec(current.duration/1000) + "，可以試聽、修改逐字稿或下載。";
   }
-
-  recBtn.addEventListener("click", function(){ recording ? stopRec() : startRec(); });
 
   function setCurrentAudio(blob){
     if(curURL){ URL.revokeObjectURL(curURL); curURL = null; }
@@ -668,13 +756,25 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     download(new Blob(["\uFEFF"+parts.join("\n\n\n")], {type:"text/plain;charset=utf-8"}), "全部逐字稿-"+fileStamp(new Date().toISOString())+".txt");
   });
 
-  /* ---------- Whisper ---------- */
-  try{ var k = localStorage.getItem(KEY_API); if(k) apiKey.value = k; }catch(e){}
+  /* ---------- 金鑰 ---------- */
+  var keyAnthropic=$("keyAnthropic"), keyGoogle=$("keyGoogle");
+  var KEY_ANT = "rec_anthropic_key_v1", KEY_GOO = "rec_google_key_v1";
+  try{
+    var k1 = localStorage.getItem(KEY_API); if(k1) apiKey.value = k1;
+    var k2 = localStorage.getItem(KEY_ANT); if(k2) keyAnthropic.value = k2;
+    var k3 = localStorage.getItem(KEY_GOO); if(k3) keyGoogle.value = k3;
+  }catch(e){}
   saveKey.addEventListener("click", function(){
-    try{ localStorage.setItem(KEY_API, apiKey.value.trim()); }catch(e){}
+    try{
+      localStorage.setItem(KEY_API, apiKey.value.trim());
+      localStorage.setItem(KEY_ANT, keyAnthropic.value.trim());
+      localStorage.setItem(KEY_GOO, keyGoogle.value.trim());
+    }catch(e){}
     saveKey.textContent = "已記住";
     setTimeout(function(){ saveKey.textContent = "記住金鑰"; }, 1600);
   });
+
+  /* ---------- Whisper ---------- */
 
   whisperBtn.addEventListener("click", async function(){
     var key = apiKey.value.trim();
@@ -717,7 +817,8 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
   });
 
   /* ---------- 換個角度潤稿 ---------- */
-  var roleSel=$("role"), roleDesc=$("roleDesc"), depthSel=$("depth"), modelSel=$("model"),
+  var roleSel=$("role"), roleDesc=$("roleDesc"), depthSel=$("depth"),
+      providerSel=$("provider"), modelInput=$("model"), modelList=$("modelList"), fetchModelsBtn=$("fetchModels"),
       reviseBtn=$("reviseBtn"), reviseState=$("reviseState"), reviseOut=$("reviseOut"),
       revisedTa=$("revised"), notesWrap=$("notesWrap"), notesEl=$("notes"), reviseTitle=$("reviseTitle");
 
@@ -771,30 +872,167 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     return out;
   }
 
-  async function callChat(key, model, system, user){
-    var res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type":"application/json", "Authorization":"Bearer "+key },
+  var PROVIDERS = {
+    openai: {
+      label: "OpenAI",
+      key: function(){ return apiKey.value.trim(); },
+      defaultModel: "gpt-5.6-sol",
+      hint: "需要 OpenAI 金鑰"
+    },
+    anthropic: {
+      label: "Claude",
+      key: function(){ return keyAnthropic.value.trim(); },
+      defaultModel: "claude-sonnet-5",
+      hint: "需要 Anthropic 金鑰"
+    },
+    google: {
+      label: "Gemini",
+      key: function(){ return keyGoogle.value.trim(); },
+      defaultModel: "gemini-3.5-flash",
+      hint: "需要 Google AI Studio 金鑰"
+    }
+  };
+
+  function modelKeyName(p){ return "rec_model_" + p; }
+  function syncProvider(){
+    var p = providerSel.value, saved = "";
+    try{ saved = localStorage.getItem(modelKeyName(p)) || ""; }catch(e){}
+    modelInput.value = saved || PROVIDERS[p].defaultModel;
+    modelList.innerHTML = "";
+    modelInput.placeholder = PROVIDERS[p].defaultModel;
+  }
+  providerSel.addEventListener("change", syncProvider);
+  modelInput.addEventListener("change", function(){
+    try{ localStorage.setItem(modelKeyName(providerSel.value), modelInput.value.trim()); }catch(e){}
+  });
+  try{
+    var savedP = localStorage.getItem("rec_provider");
+    if(savedP && PROVIDERS[savedP]) providerSel.value = savedP;
+  }catch(e){}
+  providerSel.addEventListener("change", function(){
+    try{ localStorage.setItem("rec_provider", providerSel.value); }catch(e){}
+  });
+  syncProvider();
+
+  /* 取得該服務目前可用的模型清單，免得模型名稱改版後對不上 */
+  fetchModelsBtn.addEventListener("click", async function(){
+    var p = providerSel.value, key = PROVIDERS[p].key();
+    if(!key){ reviseState.textContent = "請先填 " + PROVIDERS[p].label + " 的金鑰"; return; }
+    fetchModelsBtn.disabled = true;
+    reviseState.textContent = "查詢模型清單…";
+    try{
+      var names = [];
+      if(p === "openai"){
+        var r1 = await fetch("https://api.openai.com/v1/models", { headers:{ "Authorization":"Bearer "+key } });
+        if(!r1.ok) throw new Error(r1.status + " " + (await r1.text()).slice(0,120));
+        var d1 = await r1.json();
+        names = (d1.data||[]).map(function(m){ return m.id; })
+          .filter(function(id){ return !/embedding|whisper|tts|dall-e|image|audio|realtime|moderation|transcribe/i.test(id); });
+      }else if(p === "anthropic"){
+        var r2 = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+          headers:{ "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" }
+        });
+        if(!r2.ok) throw new Error(r2.status + " " + (await r2.text()).slice(0,120));
+        var d2 = await r2.json();
+        names = (d2.data||[]).map(function(m){ return m.id; });
+      }else{
+        var r3 = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+          headers:{ "x-goog-api-key":key }
+        });
+        if(!r3.ok) throw new Error(r3.status + " " + (await r3.text()).slice(0,120));
+        var d3 = await r3.json();
+        names = (d3.models||[]).filter(function(m){
+          return !m.supportedGenerationMethods || m.supportedGenerationMethods.indexOf("generateContent") > -1;
+        }).map(function(m){ return (m.name||"").replace(/^models\//,""); })
+          .filter(function(id){ return !/embedding|aqa|imagen|veo|tts/i.test(id); });
+      }
+      names.sort();
+      modelList.innerHTML = "";
+      names.forEach(function(n){
+        var o = document.createElement("option");
+        o.value = n; modelList.appendChild(o);
+      });
+      reviseState.textContent = "找到 " + names.length + " 個模型，點模型欄位就會出現清單";
+    }catch(err){
+      reviseState.textContent = "查不到清單：" + err.message + "（可以直接手動輸入模型名稱）";
+    }
+    fetchModelsBtn.disabled = false;
+  });
+
+  function parseJSONish(raw){
+    var s = String(raw || "").trim().replace(/^```(?:json)?\s*/i,"").replace(/```$/,"").trim();
+    try{ return JSON.parse(s); }catch(e){}
+    var a = s.indexOf("{"), b = s.lastIndexOf("}");
+    if(a > -1 && b > a){
+      try{ return JSON.parse(s.slice(a, b+1)); }catch(e2){}
+    }
+    return { revised: s, notes: [] };
+  }
+
+  async function callLLM(provider, model, key, system, user){
+    var res, data;
+    if(provider === "openai"){
+      res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+key },
+        body: JSON.stringify({
+          model: model,
+          response_format: { type:"json_object" },
+          messages: [{ role:"system", content:system }, { role:"user", content:user }]
+        })
+      });
+      if(!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0,180));
+      data = await res.json();
+      return parseJSONish(data.choices && data.choices[0] && data.choices[0].message.content);
+    }
+    if(provider === "anthropic"){
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: model,
+          max_tokens: 8000,
+          temperature: 0.3,
+          system: system,
+          messages: [
+            { role:"user", content:user },
+            { role:"assistant", content:"{" }
+          ]
+        })
+      });
+      if(!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0,180));
+      data = await res.json();
+      var txt = (data.content||[]).filter(function(b){ return b.type === "text"; })
+                 .map(function(b){ return b.text; }).join("");
+      return parseJSONish("{" + txt);
+    }
+    // google
+    res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" +
+                      encodeURIComponent(model) + ":generateContent", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        model: model,
-        temperature: 0.3,
-        response_format: { type:"json_object" },
-        messages: [{ role:"system", content:system }, { role:"user", content:user }]
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role:"user", parts: [{ text: user }] }],
+        generationConfig: { temperature: 0.3, responseMimeType: "application/json" }
       })
     });
-    if(!res.ok){ throw new Error(res.status + " " + (await res.text()).slice(0,160)); }
-    var data = await res.json();
-    var raw = (data.choices && data.choices[0] && data.choices[0].message.content) || "";
-    try{
-      return JSON.parse(raw);
-    }catch(e){
-      return { revised: raw.replace(/^```(?:json)?|```$/g,"").trim(), notes: [] };
-    }
+    if(!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0,180));
+    data = await res.json();
+    var parts = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+                 data.candidates[0].content.parts) || [];
+    return parseJSONish(parts.map(function(p){ return p.text || ""; }).join(""));
   }
 
   reviseBtn.addEventListener("click", async function(){
-    var key = apiKey.value.trim();
-    if(!key){ reviseState.textContent = "請先在上面的 OpenAI 金鑰設定貼上金鑰"; return; }
+    var p = providerSel.value, key = PROVIDERS[p].key();
+    if(!key){ reviseState.textContent = "請先在上面的金鑰設定填入 " + PROVIDERS[p].label + " 的金鑰"; return; }
+    var model = modelInput.value.trim() || PROVIDERS[p].defaultModel;
     var text = ta.value.trim();
     if(!text){ reviseState.textContent = "逐字稿是空的，先錄一段再潤稿"; return; }
     if(recording){ reviseState.textContent = "錄音中，先按結束再潤稿"; return; }
@@ -810,13 +1048,13 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
         reviseState.textContent = pieces.length > 1
           ? "潤稿中… 第 " + (i+1) + " / " + pieces.length + " 段"
           : "潤稿中，稍等一下…";
-        var p = buildPrompt(pieces[i]);
-        var out = await callChat(key, modelSel.value, p.system, p.user);
+        var pr = buildPrompt(pieces[i]);
+        var out = await callLLM(p, model, key, pr.system, pr.user);
         revisedAll.push((out.revised || "").trim());
         if(Array.isArray(out.notes)) notesAll = notesAll.concat(out.notes);
       }
       revisedTa.value = revisedAll.join("\n");
-      reviseTitle.textContent = "改善後的逐字稿（" + role.label + "）";
+      reviseTitle.textContent = "改善後的逐字稿（" + role.label + "．" + PROVIDERS[p].label + "）";
       notesEl.innerHTML = "";
       notesAll.slice(0, 8).forEach(function(n){
         var li = document.createElement("li");
