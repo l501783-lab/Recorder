@@ -112,6 +112,10 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     <div class="meter" id="meter" aria-hidden="true"></div>
     <button class="rec-btn" id="recBtn" data-on="0" aria-label="開始錄音"><span class="dot"></span></button>
     <span class="rec-label" id="recLabel">開始錄音</span>
+    <div class="row" style="justify-content:center;margin-top:16px">
+      <button class="btn sm" id="importBtn">匯入現有音檔</button>
+      <input type="file" id="fileInput" accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg,.aac,.flac,.mp4" multiple hidden>
+    </div>
     <div class="langrow">
       <label for="lang">辨識語言 </label>
       <select id="lang">
@@ -129,12 +133,12 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
 
   <section style="border-top:0;margin-top:0;padding-top:0">
     <h2 id="curTitle">目前這段</h2>
-    <p class="hint" id="curHint">還沒有錄音，按上面的按鈕開始。</p>
-    <div id="audioEmpty" class="empty">還沒有錄音</div>
+    <p class="hint" id="curHint">還沒有錄音，按上面的按鈕開始，或匯入現有的音檔。</p>
+    <div id="audioEmpty" class="empty">還沒有錄音，也可以按上面的「匯入現有音檔」</div>
     <audio id="player" controls hidden></audio>
     <div class="row">
       <button class="btn" id="dlAudio" disabled>下載錄音檔</button>
-      <button class="btn" id="whisperBtn" disabled>用 Whisper 重新轉寫</button>
+      <button class="btn" id="whisperBtn" disabled>用 Whisper 轉寫</button>
     </div>
     <details id="keyBox">
       <summary>AI 金鑰設定（選用，Whisper 轉寫和潤稿會用到）</summary>
@@ -774,43 +778,163 @@ footer{margin-top:40px;font-size:13px;color:var(--ink-soft);border-top:1px solid
     setTimeout(function(){ saveKey.textContent = "記住金鑰"; }, 1600);
   });
 
-  /* ---------- Whisper ---------- */
+  /* ---------- 匯入現有音檔 ---------- */
+  var importBtn = $("importBtn"), fileInput = $("fileInput");
+
+  function probeDuration(blob){
+    return new Promise(function(res){
+      var a = document.createElement("audio"), url = URL.createObjectURL(blob), done = false;
+      var finish = function(v){ if(done) return; done = true; URL.revokeObjectURL(url); res(v); };
+      a.preload = "metadata";
+      a.onloadedmetadata = function(){
+        var d = a.duration;
+        finish(isFinite(d) && d > 0 ? d*1000 : 0);
+      };
+      a.onerror = function(){ finish(0); };
+      setTimeout(function(){ finish(0); }, 6000);
+      a.src = url;
+    });
+  }
+
+  importBtn.addEventListener("click", function(){
+    if(recording){ stateEl.textContent = "錄音中，先按結束再匯入"; return; }
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", async function(){
+    var files = Array.prototype.slice.call(fileInput.files || []);
+    if(!files.length) return;
+    stopSpeak();
+    stateEl.textContent = "匯入中…";
+    var last = null;
+    for(var i=0;i<files.length;i++){
+      var f = files[i];
+      var dur = await probeDuration(f);
+      var s = {
+        id: String(Date.now()) + "-" + i,
+        name: f.name.replace(/\.[^.]+$/,"") || ("匯入 " + stampName(new Date())),
+        createdAt: new Date(f.lastModified || Date.now()).toISOString(),
+        duration: dur,
+        mime: f.type || "audio/mpeg",
+        blob: f,
+        segments: []
+      };
+      sessions.unshift(s);
+      await dbPut(s);
+      last = s;
+    }
+    fileInput.value = "";
+    renderList();
+    if(last) loadSession(last.id);
+    stateEl.textContent = files.length > 1
+      ? ("已匯入 " + files.length + " 個檔案，逐一按「用 Whisper 轉寫」產生逐字稿")
+      : "已匯入，按下面的「用 Whisper 轉寫」產生逐字稿";
+    setStt("匯入的檔案沒辦法用瀏覽器即時辨識，要用 Whisper 轉寫");
+  });
+
+  /* ---------- Whisper 轉寫 ---------- */
+  var WHISPER_LIMIT = 24 * 1024 * 1024;   // API 上限 25MB，留一點餘裕
+  var CHUNK_SEC = 480;                    // 超過就自己切成 8 分鐘一段
+
+  function writeStr(v, off, s){ for(var i=0;i<s.length;i++) v.setUint8(off+i, s.charCodeAt(i)); }
+  function encodeWAV(samples, rate){
+    var buf = new ArrayBuffer(44 + samples.length*2), v = new DataView(buf);
+    writeStr(v,0,"RIFF"); v.setUint32(4, 36 + samples.length*2, true); writeStr(v,8,"WAVE");
+    writeStr(v,12,"fmt "); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+    writeStr(v,36,"data"); v.setUint32(40, samples.length*2, true);
+    var o = 44;
+    for(var i=0;i<samples.length;i++){
+      var x = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(o, x < 0 ? x*0x8000 : x*0x7FFF, true);
+      o += 2;
+    }
+    return new Blob([v], { type:"audio/wav" });
+  }
+
+  /* 大檔先在本機解碼成 16k 單聲道再切段，長訪談才送得上去 */
+  async function toChunks(blob, onStep){
+    onStep("解碼音檔…");
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var ctx = new AC();
+    var decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+    try{ await ctx.close(); }catch(e){}
+
+    var rate = 16000;
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    var off = new OAC(1, Math.ceil(decoded.duration * rate), rate);
+    var src = off.createBufferSource();
+    src.buffer = decoded; src.connect(off.destination); src.start();
+    onStep("轉檔中…");
+    var mono = (await off.startRendering()).getChannelData(0);
+
+    var out = [], per = rate * CHUNK_SEC;
+    for(var i=0;i<mono.length;i+=per){
+      out.push({ start: i/rate, blob: encodeWAV(mono.subarray(i, Math.min(i+per, mono.length)), rate) });
+    }
+    return out;
+  }
+
+  async function whisperOnce(key, blob, filename, lang){
+    var fd = new FormData();
+    fd.append("file", blob, filename);
+    fd.append("model", "whisper-1");
+    fd.append("language", lang);
+    fd.append("response_format", "verbose_json");
+    var res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method:"POST", headers:{ "Authorization":"Bearer "+key }, body: fd
+    });
+    if(!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0,160));
+    return res.json();
+  }
 
   whisperBtn.addEventListener("click", async function(){
     var key = apiKey.value.trim();
-    if(!key){ stateEl.textContent = "請先在 Whisper 設定裡貼上 API 金鑰"; return; }
+    if(!key){ stateEl.textContent = "請先在金鑰設定貼上 OpenAI 金鑰"; return; }
     if(!current || !current.blob) return;
     whisperBtn.disabled = true;
     var old = whisperBtn.textContent;
     whisperBtn.textContent = "轉寫中…";
-    stateEl.textContent = "正在送去轉寫，長一點的錄音要等一下";
+    var lang = langSel.value.split("-")[0];
+
     try{
-      var fd = new FormData();
-      fd.append("file", current.blob, "audio." + extOf(current.mime));
-      fd.append("model", "whisper-1");
-      fd.append("language", langSel.value.split("-")[0]);
-      fd.append("response_format", "verbose_json");
-      var res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method:"POST", headers:{ "Authorization":"Bearer "+key }, body: fd
-      });
-      if(!res.ok){ throw new Error(res.status + " " + (await res.text()).slice(0,160)); }
-      var data = await res.json();
-      var segs = [];
-      if(data.segments && data.segments.length){
-        segs = data.segments.map(function(s){ return { t: Math.floor(s.start), text: (s.text||"").trim() }; })
-                            .filter(function(s){ return s.text; });
-      }else if((data.text||"").trim()){
-        segs = [{ t:0, text: data.text.trim() }];
+      var pieces;
+      if(current.blob.size <= WHISPER_LIMIT){
+        pieces = [{ start: 0, blob: current.blob }];
+      }else{
+        stateEl.textContent = "檔案較大，先在本機切段…";
+        pieces = await toChunks(current.blob, function(m){ stateEl.textContent = m; });
       }
+
+      var segs = [];
+      for(var i=0;i<pieces.length;i++){
+        stateEl.textContent = pieces.length > 1
+          ? "轉寫中… 第 " + (i+1) + " / " + pieces.length + " 段"
+          : "正在轉寫，長一點的錄音要等一下";
+        var ext = pieces[i].blob.type.indexOf("wav") > -1 ? "wav" : extOf(current.mime);
+        var data = await whisperOnce(key, pieces[i].blob, "audio." + ext, lang);
+        var base = pieces[i].start;
+        if(data.segments && data.segments.length){
+          data.segments.forEach(function(sg){
+            var t = (sg.text || "").trim();
+            if(t) segs.push({ t: Math.floor(base + (sg.start||0)), text: t });
+          });
+        }else if((data.text||"").trim()){
+          segs.push({ t: Math.floor(base), text: data.text.trim() });
+        }
+      }
+
       if(segs.length){
         current.segments = segs;
+        if(!current.duration) current.duration = (segs[segs.length-1].t + 5) * 1000;
         renderTranscript(); dbPut(current); renderList();
-        stateEl.textContent = "Whisper 轉寫完成，已換成新的逐字稿";
+        stateEl.textContent = "轉寫完成，共 " + segs.length + " 句";
+        setStt("Whisper 轉寫完成");
       }else{
-        stateEl.textContent = "這段錄音沒有辨識出內容";
+        stateEl.textContent = "這個音檔沒有辨識出內容";
       }
     }catch(err){
-      stateEl.textContent = "轉寫失敗：" + err.message;
+      stateEl.textContent = "轉寫失敗：" + (err && err.message ? err.message : err);
     }
     whisperBtn.textContent = old;
     whisperBtn.disabled = false;
